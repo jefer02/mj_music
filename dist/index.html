@@ -5,10 +5,74 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MJ Music</title>
     <meta name="description" content="Reproductor de musica MJ Music" />
-    <script type="module" crossorigin src="/assets/index-Cwx3OoEY.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-CVzZ-Ni9.css">
+
+    <style>
+      body.app-loading {
+        margin: 0;
+        background: #10171d;
+      }
+
+      body.app-loading > :not(#app-loader):not(script) {
+        visibility: hidden;
+      }
+
+      #app-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        background: #10171d;
+        color: #f0f4f8;
+        opacity: 1;
+        visibility: visible;
+        transition: opacity 0.32s ease, visibility 0.32s ease;
+      }
+
+      .app-loader-content {
+        display: grid;
+        justify-items: center;
+        gap: 0.8rem;
+        font-family: "Manrope", sans-serif;
+      }
+
+      .app-loader-spinner {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.26);
+        border-top-color: #ff8b47;
+        animation: appLoaderSpin 0.9s linear infinite;
+      }
+
+      .app-loader-text {
+        font-size: 0.95rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+
+      body.app-ready #app-loader {
+        opacity: 0;
+        visibility: hidden;
+      }
+
+      @keyframes appLoaderSpin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-Cb5ZG_0j.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CCtMNh01.css">
   </head>
-  <body data-theme="light">
+  <body data-theme="light" class="app-loading">
+    <div id="app-loader" aria-live="polite" role="status">
+      <div class="app-loader-content">
+        <div class="app-loader-spinner" aria-hidden="true"></div>
+        <p class="app-loader-text">Cargando...</p>
+      </div>
+    </div>
+
     <div class="bg-shape bg-shape-left" aria-hidden="true"></div>
     <div class="bg-shape bg-shape-right" aria-hidden="true"></div>
 
