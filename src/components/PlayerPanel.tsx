@@ -175,7 +175,7 @@ export function PlayerPanel(props: PlayerPanelProps) {
       return;
     }
 
-    const particlesCount = Math.min(110, Math.max(42, Math.round(host.clientWidth / 8.5)));
+    const particlesCount = Math.min(170, Math.max(74, Math.round(host.clientWidth / 6.1)));
     const colors = particlePalette.map((color) => `rgba(${color}, `);
 
     interface Particle {
@@ -213,11 +213,11 @@ export function PlayerPanel(props: PlayerPanelProps) {
         particles.push({
           x: Math.random() * host.clientWidth,
           y: Math.random() * host.clientHeight,
-          vx: (Math.random() - 0.5) * 0.22,
-          vy: (Math.random() - 0.5) * 0.22,
-          radius: 1.2 + Math.random() * 2.9,
-          alpha: 0.18 + Math.random() * 0.34,
-          alphaSpeed: 0.003 + Math.random() * 0.008,
+          vx: (Math.random() - 0.5) * 0.34,
+          vy: (Math.random() - 0.5) * 0.34,
+          radius: 1.9 + Math.random() * 3.8,
+          alpha: 0.34 + Math.random() * 0.45,
+          alphaSpeed: 0.004 + Math.random() * 0.01,
           colorIndex: Math.floor(Math.random() * colors.length),
         });
       }
@@ -239,8 +239,8 @@ export function PlayerPanel(props: PlayerPanelProps) {
         host.clientHeight * 0.46,
         Math.max(host.clientWidth, host.clientHeight) * 0.72,
       );
-      gradient.addColorStop(0, `rgba(${particlePalette[1]}, 0.27)`);
-      gradient.addColorStop(0.5, `rgba(${particlePalette[0]}, 0.14)`);
+      gradient.addColorStop(0, `rgba(${particlePalette[1]}, 0.48)`);
+      gradient.addColorStop(0.5, `rgba(${particlePalette[0]}, 0.28)`);
       gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
       context.fillStyle = gradient;
       context.fillRect(0, 0, host.clientWidth, host.clientHeight);
@@ -250,7 +250,7 @@ export function PlayerPanel(props: PlayerPanelProps) {
         particle.y += particle.vy;
         particle.alpha += particle.alphaSpeed;
 
-        if (particle.alpha > 0.52 || particle.alpha < 0.13) {
+        if (particle.alpha > 0.84 || particle.alpha < 0.24) {
           particle.alphaSpeed *= -1;
         }
 
@@ -267,13 +267,13 @@ export function PlayerPanel(props: PlayerPanelProps) {
           particle.y = -12;
         }
 
-        const pulse = 0.87 + Math.sin(time * 1.55 + particle.x * 0.01 + particle.y * 0.01) * 0.26;
+        const pulse = 1 + Math.sin(time * 1.72 + particle.x * 0.01 + particle.y * 0.01) * 0.3;
 
         context.beginPath();
         context.arc(particle.x, particle.y, particle.radius * pulse, 0, Math.PI * 2);
-        context.fillStyle = `${colors[particle.colorIndex]}${Math.max(0.08, particle.alpha)})`;
-        context.shadowBlur = 9;
-        context.shadowColor = `${colors[particle.colorIndex]}0.48)`;
+        context.fillStyle = `${colors[particle.colorIndex]}${Math.max(0.22, particle.alpha)})`;
+        context.shadowBlur = 14;
+        context.shadowColor = `${colors[particle.colorIndex]}0.72)`;
         context.fill();
       }
 

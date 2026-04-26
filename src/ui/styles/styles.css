@@ -230,13 +230,14 @@ body.app-ready > :not(#app-loader):not(script) {
   height: 100%;
   pointer-events: none;
   opacity: 0;
-  mix-blend-mode: screen;
+  mix-blend-mode: plus-lighter;
+  filter: saturate(1.22) brightness(1.16);
   transition: opacity 0.36s ease;
   z-index: 0;
 }
 
 .player-particles.is-active {
-  opacity: 0.95;
+  opacity: 1;
 }
 
 .player-panel > :not(.player-particles) {
@@ -373,24 +374,38 @@ body[data-theme="dark"] .player-panel {
 .btn-primary,
 .btn-soft,
 .btn-icon {
-  border: 1px solid var(--border);
-  background: var(--bg-elevated);
+  border: 1px solid color-mix(in oklab, var(--accent) 22%, var(--border));
+  background:
+    linear-gradient(170deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 254, 0.9)),
+    var(--bg-elevated);
   color: var(--text-primary);
-  border-radius: 12px;
+  border-radius: 13px;
   cursor: pointer;
-  transition: background var(--transition), transform var(--transition), border-color var(--transition);
+  box-shadow:
+    0 8px 18px rgba(17, 31, 47, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  transition:
+    background var(--transition),
+    transform var(--transition),
+    border-color var(--transition),
+    box-shadow var(--transition);
 }
 
 .btn-control,
 .btn-play {
-  padding: 0.5rem 0.8rem;
+  padding: 0.54rem 0.95rem;
   font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 .btn-play {
-  background: linear-gradient(140deg, var(--accent), var(--accent-strong));
+  background:
+    linear-gradient(140deg, color-mix(in oklab, var(--accent) 82%, #fff 18%), var(--accent-strong));
   color: #fff;
   border-color: transparent;
+  box-shadow:
+    0 12px 24px rgba(236, 83, 37, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
 .btn-control:hover,
@@ -398,12 +413,28 @@ body[data-theme="dark"] .player-panel {
 .btn-primary:hover,
 .btn-soft:hover,
 .btn-icon:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px) scale(1.02);
+  border-color: color-mix(in oklab, var(--accent) 68%, #ffffff 32%);
+  box-shadow:
+    0 14px 26px rgba(17, 31, 47, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.btn-control:active,
+.btn-play:active,
+.btn-primary:active,
+.btn-soft:active,
+.btn-icon:active {
+  transform: translateY(0) scale(0.985);
 }
 
 .btn-control.is-toggled {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  border-color: color-mix(in oklab, var(--accent) 86%, #fff 14%);
+  background:
+    linear-gradient(140deg, color-mix(in oklab, var(--accent-soft) 52%, #fff 48%), var(--accent-soft));
+  box-shadow:
+    0 12px 24px rgba(236, 83, 37, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
 .volume-row {
@@ -501,13 +532,18 @@ body[data-theme="dark"] .player-panel {
 }
 
 .btn-primary {
-  background: linear-gradient(140deg, var(--accent), var(--accent-strong));
+  background: linear-gradient(140deg, var(--accent), color-mix(in oklab, var(--accent-strong) 86%, #b43f1d 14%));
   border-color: transparent;
   color: #fff;
+  box-shadow:
+    0 10px 20px rgba(236, 83, 37, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .btn-soft {
-  background: var(--bg-elevated);
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.97), rgba(247, 249, 253, 0.9)),
+    var(--bg-elevated);
 }
 
 .inline-actions {
@@ -695,12 +731,34 @@ body[data-theme="dark"] .player-panel {
   place-items: center;
   font-size: 1rem;
   padding: 0;
+  border-radius: 11px;
 }
 
 .btn-icon.is-favorite {
   color: #d8a12d;
-  border-color: rgba(216, 161, 45, 0.42);
-  background: rgba(216, 161, 45, 0.16);
+  border-color: rgba(216, 161, 45, 0.58);
+  background: linear-gradient(140deg, rgba(255, 228, 159, 0.58), rgba(216, 161, 45, 0.19));
+  box-shadow:
+    0 8px 18px rgba(216, 161, 45, 0.26),
+    inset 0 1px 0 rgba(255, 248, 220, 0.7);
+}
+
+body[data-theme="dark"] .btn-control,
+body[data-theme="dark"] .btn-soft,
+body[data-theme="dark"] .btn-icon {
+  background:
+    linear-gradient(165deg, rgba(40, 55, 70, 0.96), rgba(30, 44, 59, 0.9)),
+    var(--bg-elevated);
+  border-color: color-mix(in oklab, var(--accent) 38%, rgba(255, 255, 255, 0.24));
+  box-shadow:
+    0 10px 20px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+body[data-theme="dark"] .btn-control.is-toggled {
+  background:
+    linear-gradient(145deg, rgba(255, 138, 90, 0.34), rgba(255, 122, 70, 0.24)),
+    var(--accent-soft);
 }
 
 .btn-danger {
