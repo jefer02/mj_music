@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LocalAudioService } from "../services/LocalAudioService";
-import type { PersistedPlayerSettings } from "../services/StorageService";
+import { getMediaBlobUrl } from "../api/apiClient";
 import type {
   PlaybackEngineType,
   YouTubePlayerCallbacks,
   YouTubePlayerHandle,
 } from "../types/player";
 import type { Song } from "../types/song";
+import type { PlayerSettings } from "./useMusicLibrary";
 
 export interface UsePlaybackEngineOptions {
   songs: Song[];
   playlistSongIds: string[];
-  persistedSettings: PersistedPlayerSettings;
+  playerSettings: PlayerSettings;
   settingsReady: boolean;
-  onSettingsChange: (settings: PersistedPlayerSettings) => void;
+  onSettingsChange: (settings: Partial<PlayerSettings>) => void;
 }
 
 export interface UsePlaybackEngineResult {
@@ -40,17 +41,12 @@ export interface UsePlaybackEngineResult {
 }
 
 export function usePlaybackEngine(options: UsePlaybackEngineOptions): UsePlaybackEngineResult {
-  const {
-    songs,
-    playlistSongIds,
-    persistedSettings,
-    settingsReady,
-    onSettingsChange,
-  } = options;
+  const { songs, playlistSongIds, playerSettings, settingsReady, onSettingsChange } = options;
 
-  const songMap = useMemo(() => {
-    return new Map(songs.map((song) => [song.id, song]));
-  }, [songs]);
+  const songMap = useMemo(
+    () => new Map(songs.map((s) => [s.id, s])),
+    [songs],
+  );
 
   const [currentSongId, setCurrentSongId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -66,6 +62,7 @@ export function usePlaybackEngine(options: UsePlaybackEngineOptions): UsePlaybac
   const youtubeLoadedSongIdRef = useRef<string | null>(null);
   const currentSongRef = useRef<Song | null>(null);
 
+  // Local audio service — created once
   const localAudioRef = useRef<LocalAudioService | null>(null);
   if (!localAudioRef.current) {
     localAudioRef.current = new LocalAudioService({
@@ -78,148 +75,110 @@ export function usePlaybackEngine(options: UsePlaybackEngineOptions): UsePlaybac
     });
   }
 
-  const currentSong = useMemo(() => {
-    if (!currentSongId) {
-      return null;
-    }
-
-    return songMap.get(currentSongId) ?? null;
-  }, [currentSongId, songMap]);
+  const currentSong = useMemo(
+    () => (currentSongId ? (songMap.get(currentSongId) ?? null) : null),
+    [currentSongId, songMap],
+  );
 
   useEffect(() => {
     currentSongRef.current = currentSong;
   }, [currentSong]);
 
+  // ── Navigation ────────────────────────────────────────────────────────────
+
   const resolveNeighborSongId = useCallback(
     (direction: 1 | -1): string | null => {
-      if (playlistSongIds.length === 0) {
-        return null;
-      }
-
-      if (!currentSongId) {
-        return playlistSongIds[0] ?? null;
-      }
+      if (playlistSongIds.length === 0) return null;
+      if (!currentSongId) return playlistSongIds[0] ?? null;
 
       if (isShuffleEnabled) {
-        const candidates = playlistSongIds.filter((songId) => songId !== currentSongId);
+        const candidates = playlistSongIds.filter((id) => id !== currentSongId);
         const pool = candidates.length > 0 ? candidates : playlistSongIds;
-        const randomIndex = Math.floor(Math.random() * pool.length);
-        return pool[randomIndex] ?? null;
+        return pool[Math.floor(Math.random() * pool.length)] ?? null;
       }
 
       const index = playlistSongIds.indexOf(currentSongId);
-      if (index === -1) {
-        return playlistSongIds[0] ?? null;
-      }
+      if (index === -1) return playlistSongIds[0] ?? null;
 
-      const nextIndex = index + direction;
-      if (nextIndex >= 0 && nextIndex < playlistSongIds.length) {
-        return playlistSongIds[nextIndex] ?? null;
-      }
-
+      const next = index + direction;
+      if (next >= 0 && next < playlistSongIds.length) return playlistSongIds[next] ?? null;
       if (isLoopEnabled) {
         return direction === 1
-          ? playlistSongIds[0] ?? null
-          : playlistSongIds[playlistSongIds.length - 1] ?? null;
+          ? (playlistSongIds[0] ?? null)
+          : (playlistSongIds[playlistSongIds.length - 1] ?? null);
       }
-
       return null;
     },
     [currentSongId, isLoopEnabled, isShuffleEnabled, playlistSongIds],
   );
 
   const handleTrackEnded = useCallback(() => {
-    const nextSongId = resolveNeighborSongId(1);
-
-    if (!nextSongId) {
+    const nextId = resolveNeighborSongId(1);
+    if (!nextId) {
       setIsPlaying(false);
       setCurrentTime(0);
       return;
     }
-
-    setCurrentSongId(nextSongId);
+    setCurrentSongId(nextId);
     setIsPlaying(true);
   }, [resolveNeighborSongId]);
+
+  // ── Wire local audio callbacks ────────────────────────────────────────────
 
   useEffect(() => {
     localAudioRef.current?.setCallbacks({
       onPlay: () => {
-        if (currentSongRef.current?.sourceType !== "LOCAL") {
-          return;
-        }
+        if (currentSongRef.current?.sourceType !== "LOCAL") return;
         setIsPlaying(true);
       },
       onPause: () => {
-        if (currentSongRef.current?.sourceType !== "LOCAL") {
-          return;
-        }
+        if (currentSongRef.current?.sourceType !== "LOCAL") return;
         setIsPlaying(false);
       },
       onEnded: () => {
-        if (currentSongRef.current?.sourceType !== "LOCAL") {
-          return;
-        }
+        if (currentSongRef.current?.sourceType !== "LOCAL") return;
         handleTrackEnded();
       },
       onError: () => {
-        if (currentSongRef.current?.sourceType !== "LOCAL") {
-          return;
-        }
+        if (currentSongRef.current?.sourceType !== "LOCAL") return;
         setIsPlaying(false);
       },
-      onTimeUpdate: (value) => {
-        if (currentSongRef.current?.sourceType !== "LOCAL") {
-          return;
-        }
-        setCurrentTime(value);
+      onTimeUpdate: (val) => {
+        if (currentSongRef.current?.sourceType !== "LOCAL") return;
+        setCurrentTime(val);
       },
-      onDurationChange: (value) => {
-        if (currentSongRef.current?.sourceType !== "LOCAL") {
-          return;
-        }
-        setDuration(value);
+      onDurationChange: (val) => {
+        if (currentSongRef.current?.sourceType !== "LOCAL") return;
+        setDuration(val);
       },
     });
   }, [handleTrackEnded]);
 
-  useEffect(() => {
-    if (!settingsReady) {
-      return;
-    }
+  // ── Apply persisted settings on ready ────────────────────────────────────
 
-    setVolumeState(Math.max(0, Math.min(1, persistedSettings.volume)));
-    setIsLoopEnabled(persistedSettings.isLoopEnabled);
-    setIsShuffleEnabled(persistedSettings.isShuffleEnabled);
+  useEffect(() => {
+    if (!settingsReady) return;
+    setVolumeState(Math.max(0, Math.min(1, playerSettings.volume)));
+    setIsLoopEnabled(playerSettings.isLoopEnabled);
+    setIsShuffleEnabled(playerSettings.isShuffleEnabled);
   }, [
-    persistedSettings.isLoopEnabled,
-    persistedSettings.isShuffleEnabled,
-    persistedSettings.volume,
+    playerSettings.isLoopEnabled,
+    playerSettings.isShuffleEnabled,
+    playerSettings.volume,
     settingsReady,
   ]);
 
-  useEffect(() => {
-    if (!settingsReady) {
-      return;
-    }
-
-    onSettingsChange({
-      volume,
-      isLoopEnabled,
-      isShuffleEnabled,
-    });
-  }, [isLoopEnabled, isShuffleEnabled, onSettingsChange, settingsReady, volume]);
+  // ── Playback engine effect ────────────────────────────────────────────────
 
   useEffect(() => {
     const localAudio = localAudioRef.current;
-    const youtubePlayer = youtubePlayerRef.current;
+    const ytPlayer = youtubePlayerRef.current;
 
-    if (!localAudio) {
-      return;
-    }
+    if (!localAudio) return;
 
     if (!currentSong) {
       localAudio.stop();
-      youtubePlayer?.stop();
+      ytPlayer?.stop();
       localLoadedSongIdRef.current = null;
       youtubeLoadedSongIdRef.current = null;
       setCurrentTime(0);
@@ -228,29 +187,34 @@ export function usePlaybackEngine(options: UsePlaybackEngineOptions): UsePlaybac
     }
 
     if (currentSong.sourceType === "LOCAL") {
-      youtubePlayer?.stop();
+      ytPlayer?.stop();
       youtubeLoadedSongIdRef.current = null;
 
-      if (currentSong.localObjectUrl && localLoadedSongIdRef.current !== currentSong.id) {
-        localAudio.loadSource(currentSong.localObjectUrl);
+      if (localLoadedSongIdRef.current !== currentSong.id) {
         localLoadedSongIdRef.current = currentSong.id;
         setCurrentTime(0);
-        setDuration(currentSong.duration > 0 ? currentSong.duration : 0);
+
+        // Fetch audio with auth → blob URL
+        void getMediaBlobUrl(currentSong.id).then((blobUrl) => {
+          if (!blobUrl || localLoadedSongIdRef.current !== currentSong.id) return;
+          localAudio.loadSource(blobUrl);
+          if (isPlaying) {
+            void localAudio.play().catch(() => setIsPlaying(false));
+          }
+        });
+        return;
       }
 
       localAudio.setVolume(volume);
-
       if (isPlaying) {
-        void localAudio.play().catch(() => {
-          setIsPlaying(false);
-        });
+        void localAudio.play().catch(() => setIsPlaying(false));
       } else {
         localAudio.pause();
       }
-
       return;
     }
 
+    // YouTube
     localAudio.stop();
     localLoadedSongIdRef.current = null;
 
@@ -259,32 +223,23 @@ export function usePlaybackEngine(options: UsePlaybackEngineOptions): UsePlaybac
       return;
     }
 
-    if (youtubePlayer) {
-      youtubePlayer.setVolume(volume);
-
+    if (ytPlayer) {
+      ytPlayer.setVolume(volume);
       if (youtubeLoadedSongIdRef.current !== currentSong.id) {
-        youtubePlayer.loadVideo(currentSong.youtubeVideoId, isPlaying);
+        ytPlayer.loadVideo(currentSong.youtubeVideoId, isPlaying);
         youtubeLoadedSongIdRef.current = currentSong.id;
         setCurrentTime(0);
       } else if (isPlaying) {
-        youtubePlayer.play();
+        ytPlayer.play();
       } else {
-        youtubePlayer.pause();
+        ytPlayer.pause();
       }
     }
-  }, [
-    currentSong,
-    isPlaying,
-    volume,
-    youtubeVersion,
-  ]);
+  }, [currentSong, isPlaying, volume, youtubeVersion]);
 
+  // Clear current song if it was deleted from the library
   useEffect(() => {
-    if (!currentSongId) {
-      return;
-    }
-
-    if (!songMap.has(currentSongId)) {
+    if (currentSongId && !songMap.has(currentSongId)) {
       setCurrentSongId(null);
       setIsPlaying(false);
       setCurrentTime(0);
@@ -292,14 +247,15 @@ export function usePlaybackEngine(options: UsePlaybackEngineOptions): UsePlaybac
     }
   }, [currentSongId, songMap]);
 
+  // ── YouTube player registration ───────────────────────────────────────────
+
   const registerYouTubePlayer = useCallback((handle: YouTubePlayerHandle | null): void => {
     youtubePlayerRef.current = handle;
-    setYouTubeVersion((previous) => previous + 1);
-
-    if (handle) {
-      handle.setVolume(volume);
-    }
+    setYouTubeVersion((v) => v + 1);
+    if (handle) handle.setVolume(volume);
   }, [volume]);
+
+  // ── Controls ──────────────────────────────────────────────────────────────
 
   const playSong = useCallback((songId?: string): void => {
     if (songId) {
@@ -307,40 +263,26 @@ export function usePlaybackEngine(options: UsePlaybackEngineOptions): UsePlaybac
       setIsPlaying(true);
       return;
     }
-
     if (!currentSongId) {
-      const firstSongId = playlistSongIds[0] ?? null;
-      if (firstSongId) {
-        setCurrentSongId(firstSongId);
-        setIsPlaying(true);
-      }
+      const first = playlistSongIds[0];
+      if (first) { setCurrentSongId(first); setIsPlaying(true); }
       return;
     }
-
     setIsPlaying(true);
   }, [currentSongId, playlistSongIds]);
 
   const togglePlayPause = useCallback((): void => {
     if (!currentSongId) {
-      const firstSongId = playlistSongIds[0] ?? null;
-      if (firstSongId) {
-        setCurrentSongId(firstSongId);
-        setIsPlaying(true);
-      }
+      const first = playlistSongIds[0];
+      if (first) { setCurrentSongId(first); setIsPlaying(true); }
       return;
     }
-
-    setIsPlaying((previous) => !previous);
+    setIsPlaying((prev) => !prev);
   }, [currentSongId, playlistSongIds]);
 
   const nextSong = useCallback((): void => {
-    const nextSongId = resolveNeighborSongId(1);
-    if (!nextSongId) {
-      return;
-    }
-
-    setCurrentSongId(nextSongId);
-    setIsPlaying(true);
+    const id = resolveNeighborSongId(1);
+    if (id) { setCurrentSongId(id); setIsPlaying(true); }
   }, [resolveNeighborSongId]);
 
   const previousSong = useCallback((): void => {
@@ -353,42 +295,41 @@ export function usePlaybackEngine(options: UsePlaybackEngineOptions): UsePlaybac
       setCurrentTime(0);
       return;
     }
-
-    const previousSongId = resolveNeighborSongId(-1);
-    if (!previousSongId) {
-      return;
-    }
-
-    setCurrentSongId(previousSongId);
-    setIsPlaying(true);
+    const id = resolveNeighborSongId(-1);
+    if (id) { setCurrentSongId(id); setIsPlaying(true); }
   }, [currentSong?.sourceType, currentTime, resolveNeighborSongId]);
 
   const seekTo = useCallback((seconds: number): void => {
-    const safeSeconds = Math.max(0, seconds);
-
+    const safe = Math.max(0, seconds);
     if (currentSong?.sourceType === "LOCAL") {
-      localAudioRef.current?.seekTo(safeSeconds);
+      localAudioRef.current?.seekTo(safe);
     } else {
-      youtubePlayerRef.current?.seekTo(safeSeconds);
+      youtubePlayerRef.current?.seekTo(safe);
     }
-
-    setCurrentTime(safeSeconds);
+    setCurrentTime(safe);
   }, [currentSong?.sourceType]);
 
   const setVolume = useCallback((value: number): void => {
-    const safeValue = Math.max(0, Math.min(1, value));
-    setVolumeState(safeValue);
-    localAudioRef.current?.setVolume(safeValue);
-    youtubePlayerRef.current?.setVolume(safeValue);
-  }, []);
+    const safe = Math.max(0, Math.min(1, value));
+    setVolumeState(safe);
+    localAudioRef.current?.setVolume(safe);
+    youtubePlayerRef.current?.setVolume(safe);
+    onSettingsChange({ volume: safe });
+  }, [onSettingsChange]);
 
   const toggleLoop = useCallback((): void => {
-    setIsLoopEnabled((previous) => !previous);
-  }, []);
+    setIsLoopEnabled((prev) => {
+      onSettingsChange({ isLoopEnabled: !prev });
+      return !prev;
+    });
+  }, [onSettingsChange]);
 
   const toggleShuffle = useCallback((): void => {
-    setIsShuffleEnabled((previous) => !previous);
-  }, []);
+    setIsShuffleEnabled((prev) => {
+      onSettingsChange({ isShuffleEnabled: !prev });
+      return !prev;
+    });
+  }, [onSettingsChange]);
 
   const clearCurrentSong = useCallback((): void => {
     setCurrentSongId(null);
@@ -399,6 +340,7 @@ export function usePlaybackEngine(options: UsePlaybackEngineOptions): UsePlaybac
     youtubePlayerRef.current?.stop();
   }, []);
 
+  // Cleanup
   useEffect(() => {
     return () => {
       localAudioRef.current?.destroy();
@@ -406,69 +348,42 @@ export function usePlaybackEngine(options: UsePlaybackEngineOptions): UsePlaybac
     };
   }, []);
 
-  const youtubeCallbacks = useMemo<YouTubePlayerCallbacks>(() => {
-    return {
-      onPlay: () => {
-        if (currentSongRef.current?.sourceType !== "YOUTUBE") {
-          return;
-        }
-        setIsPlaying(true);
-      },
-      onPause: () => {
-        if (currentSongRef.current?.sourceType !== "YOUTUBE") {
-          return;
-        }
-        setIsPlaying(false);
-      },
-      onEnded: () => {
-        if (currentSongRef.current?.sourceType !== "YOUTUBE") {
-          return;
-        }
-        handleTrackEnded();
-      },
-      onDurationChange: (value) => {
-        if (currentSongRef.current?.sourceType !== "YOUTUBE") {
-          return;
-        }
-        setDuration(value);
-      },
-      onTimeUpdate: (value) => {
-        if (currentSongRef.current?.sourceType !== "YOUTUBE") {
-          return;
-        }
-        setCurrentTime(value);
-      },
-      onError: () => {
-        if (currentSongRef.current?.sourceType !== "YOUTUBE") {
-          return;
-        }
-        setIsPlaying(false);
-      },
-    };
-  }, [handleTrackEnded]);
+  // ── YouTube callbacks (memoized to avoid re-mounting the surface) ─────────
+
+  const youtubeCallbacks = useMemo<YouTubePlayerCallbacks>(() => ({
+    onPlay: () => {
+      if (currentSongRef.current?.sourceType !== "YOUTUBE") return;
+      setIsPlaying(true);
+    },
+    onPause: () => {
+      if (currentSongRef.current?.sourceType !== "YOUTUBE") return;
+      setIsPlaying(false);
+    },
+    onEnded: () => {
+      if (currentSongRef.current?.sourceType !== "YOUTUBE") return;
+      handleTrackEnded();
+    },
+    onDurationChange: (val) => {
+      if (currentSongRef.current?.sourceType !== "YOUTUBE") return;
+      setDuration(val);
+    },
+    onTimeUpdate: (val) => {
+      if (currentSongRef.current?.sourceType !== "YOUTUBE") return;
+      setCurrentTime(val);
+    },
+    onError: () => {
+      if (currentSongRef.current?.sourceType !== "YOUTUBE") return;
+      setIsPlaying(false);
+    },
+  }), [handleTrackEnded]);
 
   const activeEngine: PlaybackEngineType = currentSong ? currentSong.sourceType : "NONE";
 
   return {
-    currentSong,
-    currentSongId,
-    isPlaying,
-    currentTime,
-    duration,
-    volume,
-    isLoopEnabled,
-    isShuffleEnabled,
-    activeEngine,
-    registerYouTubePlayer,
-    youtubeCallbacks,
-    playSong,
-    togglePlayPause,
-    nextSong,
-    previousSong,
-    seekTo,
-    setVolume,
-    toggleLoop,
-    toggleShuffle,
-    clearCurrentSong,
+    currentSong, currentSongId, isPlaying, currentTime, duration,
+    volume, isLoopEnabled, isShuffleEnabled, activeEngine,
+    registerYouTubePlayer, youtubeCallbacks,
+    playSong, togglePlayPause, nextSong, previousSong, seekTo,
+    setVolume, toggleLoop, toggleShuffle, clearCurrentSong,
   };
 }
