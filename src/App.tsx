@@ -1,325 +1,241 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Ghost, LogIn } from "lucide-react";
 import { AddTrackPanel } from "./components/AddTrackPanel";
 import { AppHeader } from "./components/AppHeader";
+import { LoadingScreen } from "./components/LoadingScreen";
+import { LoginModal } from "./components/LoginModal";
 import { PlayerPanel } from "./components/PlayerPanel";
 import { PlaylistPanel } from "./components/PlaylistPanel";
 import { SongList } from "./components/SongList";
 import { YouTubePlayerSurface } from "./components/YouTubePlayerSurface";
+import { ToastContainer } from "./components/ui/Toast";
+import { useAuth } from "./context/AuthContext";
 import { useMusicLibrary } from "./hooks/useMusicLibrary";
 import { usePlaybackEngine } from "./hooks/usePlaybackEngine";
+import { useNotification } from "./context/NotificationContext";
+import { ApiError } from "./api/apiClient";
 import { LIBRARY_PLAYLIST_ID } from "./types/playlist";
-import type { Song } from "./types/song";
-import { detectHiResFromLocalTrack, detectHiResFromTextHint } from "./utils/hiRes";
-import { buildSongId, parseFileNameFallback, readAudioDuration, readSongTags } from "./utils/metadata";
-import {
-  buildYouTubeThumbnailUrl,
-  buildYouTubeWatchUrl,
-  extractYouTubeVideoId,
-} from "./utils/youtube";
+import { extractYouTubeVideoId } from "./utils/youtube";
 
-interface NotificationState {
-  message: string;
-  tone: "success" | "info" | "warning" | "error";
+function GuestBanner() {
+  const { logout } = useAuth();
+  return (
+    <div className="guest-banner" role="status">
+      <Ghost size={15} />
+      <span>Guest mode — your data is not saved. <strong>Sign in</strong> to sync your library.</span>
+      <button type="button" className="guest-banner-btn" onClick={logout}>
+        <LogIn size={13} /> Sign in
+      </button>
+    </div>
+  );
 }
 
-export function App() {
+// ── Authenticated shell ───────────────────────────────────────────────────────
+
+function AuthenticatedApp() {
+  const { notify } = useNotification();
+  const { isGuest } = useAuth();
+
+  const library = useMusicLibrary();
   const {
-    isReady,
-    songs,
-    playlists,
-    activePlaylist,
-    activePlaylistId,
-    visibleSongs,
-    persistedSettings,
-    setPersistedSettings,
-    setActivePlaylistId,
-    addSong,
-    removeSongFromPlaylist,
-    createPlaylist,
-    addSongsToPlaylist,
-    deletePlaylist,
-    toggleFavorite,
-    isFavorite,
-  } = useMusicLibrary();
+    loadStage, loadError, songs, playlists, activePlaylist, activePlaylistId,
+    visibleSongs, playerSettings, setActivePlaylistId,
+    uploadLocalFile, addYouTubeSong, removeSongFromPlaylist,
+    createPlaylist, addSongsToPlaylist, deletePlaylist,
+    toggleFavorite, isFavorite, updatePlayerSettings,
+  } = library;
 
   const playback = usePlaybackEngine({
     songs,
     playlistSongIds: activePlaylist.songIds,
-    persistedSettings,
-    settingsReady: isReady,
-    onSettingsChange: setPersistedSettings,
+    playerSettings,
+    settingsReady: loadStage === "ready",
+    onSettingsChange: updatePlayerSettings,
   });
 
   const [selectedSongIds, setSelectedSongIds] = useState<Set<string>>(new Set());
   const [newPlaylistName, setNewPlaylistName] = useState("");
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    const persistedTheme = localStorage.getItem("mjmusic_theme");
-    return persistedTheme === "dark" ? "dark" : "light";
-  });
-  const [notification, setNotification] = useState<NotificationState | null>(null);
-  const notificationTimerRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    document.body.classList.add("app-ready");
-    document.body.classList.remove("app-loading");
-    document.body.setAttribute("data-theme", theme);
+  // Show loading screen until ready
+  if (loadStage !== "ready" && loadStage !== "error") {
+    return <LoadingScreen stage={loadStage === "idle" ? "library" : loadStage} />;
+  }
 
-    const loader = document.getElementById("app-loader");
-    if (loader) {
-      window.setTimeout(() => loader.remove(), 360);
+  if (loadStage === "error") {
+    return (
+      <div className="error-screen">
+        <div className="error-screen-content">
+          <h2>Failed to connect to server</h2>
+          <p>{loadError}</p>
+          <button type="button" className="btn btn--primary btn--md" onClick={() => window.location.reload()}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return <AppShell
+    library={library}
+    playback={playback}
+    songs={songs}
+    playlists={playlists}
+    activePlaylist={activePlaylist}
+    activePlaylistId={activePlaylistId}
+    visibleSongs={visibleSongs}
+    playerSettings={playerSettings}
+    setActivePlaylistId={setActivePlaylistId}
+    uploadLocalFile={uploadLocalFile}
+    addYouTubeSong={addYouTubeSong}
+    removeSongFromPlaylist={removeSongFromPlaylist}
+    createPlaylist={createPlaylist}
+    addSongsToPlaylist={addSongsToPlaylist}
+    deletePlaylist={deletePlaylist}
+    toggleFavorite={toggleFavorite}
+    isFavorite={isFavorite}
+    updatePlayerSettings={updatePlayerSettings}
+    notify={notify}
+    isGuest={isGuest}
+    selectedSongIds={selectedSongIds}
+    setSelectedSongIds={setSelectedSongIds}
+    newPlaylistName={newPlaylistName}
+    setNewPlaylistName={setNewPlaylistName}
+  />;
+}
+
+// ── App Shell (only mounted when data is ready) ───────────────────────────────
+
+function AppShell({
+  library, playback, songs, playlists, activePlaylist, activePlaylistId, visibleSongs,
+  setActivePlaylistId, uploadLocalFile, addYouTubeSong, removeSongFromPlaylist,
+  createPlaylist, addSongsToPlaylist, deletePlaylist, toggleFavorite, isFavorite,
+  notify, isGuest, selectedSongIds, setSelectedSongIds, newPlaylistName, setNewPlaylistName,
+}: any) {
+  const songsById = useMemo(() => new Map(songs.map((s: any) => [s.id, s])), [songs]);
+
+  const handleUploadLocalFile = useCallback(async (file: File): Promise<void> => {
+    try {
+      await uploadLocalFile(file);
+      notify(`"${file.name}" added to library`, "success");
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Upload failed";
+      notify(msg, "error");
     }
-  }, [theme]);
+  }, [uploadLocalFile, notify]);
 
-  useEffect(() => {
-    localStorage.setItem("mjmusic_theme", theme);
-  }, [theme]);
-
-  useEffect(() => {
-    return () => {
-      if (notificationTimerRef.current !== null) {
-        window.clearTimeout(notificationTimerRef.current);
-      }
-    };
-  }, []);
-
-  const notify = useCallback((message: string, tone: NotificationState["tone"] = "info"): void => {
-    setNotification({ message, tone });
-
-    if (notificationTimerRef.current !== null) {
-      window.clearTimeout(notificationTimerRef.current);
+  const handleAddYouTubeSong = useCallback(async (input: { url: string; title: string; artist: string }): Promise<void> => {
+    const videoId = extractYouTubeVideoId(input.url);
+    if (!videoId) {
+      notify("Invalid YouTube URL", "error");
+      return;
     }
-
-    notificationTimerRef.current = window.setTimeout(() => {
-      setNotification(null);
-    }, 3200);
-  }, []);
-
-  const songsById = useMemo(() => new Map(songs.map((song) => [song.id, song])), [songs]);
-
-  const handleAddLocalFiles = useCallback(
-    async (files: File[]): Promise<void> => {
-      let added = 0;
-      let ignored = 0;
-      let duplicated = 0;
-
-      for (const file of files) {
-        if (!file.type.startsWith("audio/")) {
-          ignored++;
-          continue;
-        }
-
-        const duplicateLocalSong = songs.some(
-          (song) =>
-            song.sourceType === "LOCAL" &&
-            song.localFileName === file.name &&
-            song.localFileSize === file.size,
-        );
-
-        if (duplicateLocalSong) {
-          duplicated++;
-          continue;
-        }
-
-        const fallback = parseFileNameFallback(file.name);
-        const tags = await readSongTags(file);
-        const duration = await readAudioDuration(file);
-        const hiResData = detectHiResFromLocalTrack(file.size, duration);
-
-        const localSong: Song = {
-          id: buildSongId("local"),
-          title: tags.title ?? fallback.title,
-          artist: tags.artist ?? fallback.artist,
-          duration,
-          sourceType: "LOCAL",
-          localObjectUrl: URL.createObjectURL(file),
-          localFileName: file.name,
-          localFileSize: file.size,
-          youtubeUrl: null,
-          youtubeVideoId: null,
-          coverDataUrl: tags.coverDataUrl,
-          bitrateKbps: hiResData.bitrateKbps,
-          isHiRes: hiResData.isHiRes,
-          createdAt: Date.now(),
-        };
-
-        await addSong(localSong, file);
-        added++;
-      }
-
-      if (added > 0) {
-        notify(`${added} local song(s) added`, "success");
-      }
-
-      if (duplicated > 0) {
-        notify(`${duplicated} duplicated local song(s) were skipped`, "warning");
-      }
-
-      if (ignored > 0) {
-        notify(`${ignored} file(s) were ignored because they are not audio`, "warning");
-      }
-    },
-    [addSong, notify, songs],
-  );
-
-  const handleAddYouTubeSong = useCallback(
-    async (input: { url: string; title: string; artist: string }): Promise<void> => {
-      const videoId = extractYouTubeVideoId(input.url);
-      if (!videoId) {
-        notify("Invalid YouTube URL or videoId", "error");
-        return;
-      }
-
-      const alreadyExists = songs.some(
-        (song) => song.sourceType === "YOUTUBE" && song.youtubeVideoId === videoId,
-      );
-
-      if (alreadyExists) {
-        notify("This YouTube song already exists in your library", "warning");
-        return;
-      }
-
-      const title = input.title.trim() || `YouTube Track ${videoId}`;
-      const artist = input.artist.trim() || "YouTube";
-      const hiResData = detectHiResFromTextHint(title, artist);
-
-      const youtubeSong: Song = {
-        id: buildSongId("yt"),
-        title,
-        artist,
-        duration: 0,
-        sourceType: "YOUTUBE",
-        localObjectUrl: null,
-        localFileName: "",
-        localFileSize: 0,
-        youtubeUrl: buildYouTubeWatchUrl(videoId),
-        youtubeVideoId: videoId,
-        coverDataUrl: buildYouTubeThumbnailUrl(videoId),
-        bitrateKbps: hiResData.bitrateKbps,
-        isHiRes: hiResData.isHiRes,
-        createdAt: Date.now(),
-      };
-
-      await addSong(youtubeSong);
+    const already = songs.some((s: any) => s.sourceType === "YOUTUBE" && s.youtubeVideoId === videoId);
+    if (already) {
+      notify("This YouTube song is already in your library", "warning");
+      return;
+    }
+    try {
+      await addYouTubeSong(input);
       notify("YouTube song added", "success");
-    },
-    [addSong, notify, songs],
-  );
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Failed to add YouTube song";
+      notify(msg, "error");
+    }
+  }, [addYouTubeSong, notify, songs]);
 
   const handleToggleSelected = useCallback((songId: string): void => {
-    setSelectedSongIds((previousSelected) => {
-      const nextSelected = new Set(previousSelected);
-      if (nextSelected.has(songId)) {
-        nextSelected.delete(songId);
-      } else {
-        nextSelected.add(songId);
-      }
-      return nextSelected;
+    setSelectedSongIds((prev: Set<string>) => {
+      const next = new Set(prev);
+      next.has(songId) ? next.delete(songId) : next.add(songId);
+      return next;
     });
-  }, []);
+  }, [setSelectedSongIds]);
 
   const handleSelectAllVisible = useCallback((): void => {
-    setSelectedSongIds(new Set(visibleSongs.map((song) => song.id)));
-  }, [visibleSongs]);
+    setSelectedSongIds(new Set(visibleSongs.map((s: any) => s.id)));
+  }, [visibleSongs, setSelectedSongIds]);
 
   const handleClearSelection = useCallback((): void => {
     setSelectedSongIds(new Set());
-  }, []);
+  }, [setSelectedSongIds]);
 
-  const handleCreatePlaylist = useCallback((): void => {
-    const playlistId = createPlaylist(newPlaylistName, Array.from(selectedSongIds));
-
-    if (!playlistId) {
-      notify("Select songs and provide a playlist name", "warning");
+  const handleCreatePlaylist = useCallback(async (): Promise<void> => {
+    if (!newPlaylistName.trim() || selectedSongIds.size === 0) {
+      notify("Enter a name and select songs first", "warning");
       return;
     }
+    try {
+      const id = await createPlaylist(newPlaylistName, Array.from(selectedSongIds));
+      if (!id) { notify("Could not create playlist", "warning"); return; }
+      setSelectedSongIds(new Set());
+      setNewPlaylistName("");
+      notify("Playlist created", "success");
+    } catch (err) {
+      notify(err instanceof ApiError ? err.message : "Failed to create playlist", "error");
+    }
+  }, [createPlaylist, newPlaylistName, notify, selectedSongIds, setNewPlaylistName, setSelectedSongIds]);
 
-    setSelectedSongIds(new Set());
-    setNewPlaylistName("");
-    notify("Playlist created", "success");
-  }, [createPlaylist, newPlaylistName, notify, selectedSongIds]);
-
-  const handleAddSelectionToActive = useCallback((): void => {
+  const handleAddSelectionToActive = useCallback(async (): Promise<void> => {
     if (activePlaylistId === LIBRARY_PLAYLIST_ID) {
       notify("Select a custom playlist or Favorites first", "warning");
       return;
     }
-
-    const selected = Array.from(selectedSongIds).filter((songId) => songsById.has(songId));
-    if (selected.length === 0) {
-      notify("No selected songs to add", "warning");
-      return;
+    const toAdd = Array.from(selectedSongIds).filter((id) => songsById.has(id));
+    if (toAdd.length === 0) { notify("No valid songs selected", "warning"); return; }
+    const existing = new Set(activePlaylist.songIds);
+    const fresh = toAdd.filter((id) => !existing.has(id));
+    if (fresh.length === 0) { notify("All selected songs already in this playlist", "info"); return; }
+    try {
+      await addSongsToPlaylist(activePlaylistId, fresh);
+      notify(`${fresh.length} song(s) added`, "success");
+    } catch (err) {
+      notify(err instanceof ApiError ? err.message : "Failed to add songs", "error");
     }
+  }, [activePlaylist.songIds, activePlaylistId, addSongsToPlaylist, notify, selectedSongIds, songsById]);
 
-    const existingSet = new Set(activePlaylist.songIds);
-    const toAdd = selected.filter((songId) => !existingSet.has(songId));
-    if (toAdd.length === 0) {
-      notify("All selected songs already exist in active playlist", "info");
-      return;
-    }
-
-    addSongsToPlaylist(activePlaylistId, selected);
-    notify(`${toAdd.length} song(s) added to active playlist`, "success");
-  }, [
-    activePlaylist,
-    activePlaylistId,
-    addSongsToPlaylist,
-    notify,
-    selectedSongIds,
-    songsById,
-  ]);
-
-  const handleRemoveSong = useCallback(
-    async (songId: string): Promise<void> => {
-      const removeFromLibrary = activePlaylistId === LIBRARY_PLAYLIST_ID;
-      const wasCurrentSong = playback.currentSongId === songId;
-
+  const handleRemoveSong = useCallback(async (songId: string): Promise<void> => {
+    const wasPlaying = playback.currentSongId === songId;
+    try {
       await removeSongFromPlaylist(songId, activePlaylistId);
-
-      setSelectedSongIds((previousSelected) => {
-        const nextSelected = new Set(previousSelected);
-        nextSelected.delete(songId);
-        return nextSelected;
+      if (wasPlaying) playback.clearCurrentSong();
+      setSelectedSongIds((prev: Set<string>) => {
+        const next = new Set(prev);
+        next.delete(songId);
+        return next;
       });
+      notify(activePlaylistId === LIBRARY_PLAYLIST_ID ? "Song removed from library" : "Song removed from playlist", "info");
+    } catch (err) {
+      notify(err instanceof ApiError ? err.message : "Failed to remove song", "error");
+    }
+  }, [activePlaylistId, notify, playback, removeSongFromPlaylist, setSelectedSongIds]);
 
-      if (wasCurrentSong) {
-        playback.clearCurrentSong();
-      }
-
-      notify(removeFromLibrary ? "Song removed from library" : "Song removed from playlist", "info");
-    },
-    [activePlaylistId, notify, playback, removeSongFromPlaylist],
-  );
-
-  const handleDeletePlaylist = useCallback(
-    (playlistId: string): void => {
-      const playlist = playlists.find((item) => item.id === playlistId);
-      if (!playlist || playlist.isSystem) {
-        return;
-      }
-
-      const confirmed = window.confirm(`Delete playlist \"${playlist.name}\"?`);
-      if (!confirmed) {
-        return;
-      }
-
-      deletePlaylist(playlistId);
+  const handleDeletePlaylist = useCallback(async (playlistId: string): Promise<void> => {
+    try {
+      await deletePlaylist(playlistId);
       notify("Playlist deleted", "info");
-    },
-    [deletePlaylist, notify, playlists],
-  );
+    } catch (err) {
+      notify(err instanceof ApiError ? err.message : "Failed to delete playlist", "error");
+    }
+  }, [deletePlaylist, notify]);
 
-  const canAddSelectionToActive =
-    activePlaylistId !== LIBRARY_PLAYLIST_ID && selectedSongIds.size > 0;
+  const handleToggleFavorite = useCallback(async (songId: string): Promise<void> => {
+    try {
+      await toggleFavorite(songId);
+    } catch (err) {
+      notify(err instanceof ApiError ? err.message : "Failed to update favorites", "error");
+    }
+  }, [notify, toggleFavorite]);
+
+  const canAddSelectionToActive = activePlaylistId !== LIBRARY_PLAYLIST_ID && selectedSongIds.size > 0;
 
   return (
     <div className="app-shell">
       <div className="bg-shape bg-shape-left" aria-hidden="true" />
       <div className="bg-shape bg-shape-right" aria-hidden="true" />
 
-      <AppHeader
-        theme={theme}
-        onToggleTheme={() => setTheme((previousTheme) => (previousTheme === "light" ? "dark" : "light"))}
-      />
+      <AppHeader onLogoClick={() => window.location.reload()} />
+
+      {isGuest && <GuestBanner />}
 
       <PlayerPanel
         currentSong={playback.currentSong}
@@ -348,7 +264,10 @@ export function App() {
 
       <main className="content-grid">
         <div className="left-column">
-          <AddTrackPanel onAddLocalFiles={handleAddLocalFiles} onAddYouTubeSong={handleAddYouTubeSong} />
+          <AddTrackPanel
+            onUploadLocalFile={handleUploadLocalFile}
+            onAddYouTubeSong={handleAddYouTubeSong}
+          />
 
           <PlaylistPanel
             playlists={playlists}
@@ -373,17 +292,27 @@ export function App() {
           selectedSongIds={selectedSongIds}
           onToggleSelected={handleToggleSelected}
           onPlaySong={playback.playSong}
-          onRemoveSong={(songId) => void handleRemoveSong(songId)}
-          onToggleFavorite={toggleFavorite}
+          onRemoveSong={(id) => void handleRemoveSong(id)}
+          onToggleFavorite={(id) => void handleToggleFavorite(id)}
           isFavorite={isFavorite}
         />
       </main>
 
-      {notification && (
-        <div className={`notification is-visible ${notification.tone}`} role="status" aria-live="polite">
-          {notification.message}
-        </div>
-      )}
+      <ToastContainer />
     </div>
   );
+}
+
+// ── Root App ─────────────────────────────────────────────────────────────────
+
+export function App() {
+  const { isAuthenticated } = useAuth();
+
+  // Dismiss the static HTML loader once React has mounted
+  useEffect(() => {
+    document.body.classList.remove("app-loading");
+    document.body.classList.add("app-ready");
+  }, []);
+
+  return isAuthenticated ? <AuthenticatedApp /> : <LoginModal />;
 }
