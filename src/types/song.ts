@@ -1,3 +1,5 @@
+import type { ApiSong } from "./api";
+
 export type TrackSourceType = "LOCAL" | "YOUTUBE";
 
 export interface Song {
@@ -6,15 +8,32 @@ export interface Song {
   artist: string;
   duration: number;
   sourceType: TrackSourceType;
-  localObjectUrl: string | null;
-  localFileName: string;
-  localFileSize: number;
+  localFileName: string | null;
+  localFileSize: number | null;
   youtubeUrl: string | null;
   youtubeVideoId: string | null;
-  coverDataUrl: string | null;
+  /** URL to cover art — can be API URL or YouTube thumbnail */
+  coverUrl: string | null;
   bitrateKbps: number | null;
   isHiRes: boolean;
-  createdAt: number;
+  createdAt: string;
 }
 
-export type PersistedSong = Omit<Song, "localObjectUrl">;
+/** Maps an ApiSong from the backend to the frontend Song model */
+export function mapApiSong(apiSong: ApiSong): Song {
+  return {
+    id: apiSong.id,
+    title: apiSong.title,
+    artist: apiSong.artist,
+    duration: apiSong.duration,
+    sourceType: apiSong.sourceType,
+    localFileName: apiSong.localFileName,
+    localFileSize: apiSong.localFileSize,
+    youtubeUrl: apiSong.youtubeUrl,
+    youtubeVideoId: apiSong.youtubeVideoId,
+    coverUrl: apiSong.coverUrl,
+    bitrateKbps: apiSong.bitrateKbps,
+    isHiRes: apiSong.isHiRes,
+    createdAt: apiSong.createdAt,
+  };
+}
