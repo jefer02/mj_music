@@ -1,5 +1,8 @@
+import { Play, Star, Trash2, Music } from "lucide-react";
 import { HiResBadge } from "./HiResBadge";
 import { SourceBadge } from "./SourceBadge";
+import { EmptyState } from "./ui/EmptyState";
+import { IconButton } from "./ui/IconButton";
 import type { Song } from "../types/song";
 import { formatSecondsToClock } from "../utils/time";
 
@@ -17,16 +20,11 @@ interface SongListProps {
 
 export function SongList(props: SongListProps) {
   const {
-    songs,
-    activePlaylistId,
-    currentSongId,
-    selectedSongIds,
-    onToggleSelected,
-    onPlaySong,
-    onRemoveSong,
-    onToggleFavorite,
-    isFavorite,
+    songs, activePlaylistId, currentSongId, selectedSongIds,
+    onToggleSelected, onPlaySong, onRemoveSong, onToggleFavorite, isFavorite,
   } = props;
+
+  const removeLabel = activePlaylistId === "library" ? "Remove from library" : "Remove from playlist";
 
   if (songs.length === 0) {
     return (
@@ -34,7 +32,15 @@ export function SongList(props: SongListProps) {
         <div className="panel-header-row">
           <h2 className="panel-title">Songs</h2>
         </div>
-        <div className="empty-state">No songs in this playlist.</div>
+        <EmptyState
+          icon={<Music size={40} strokeWidth={1.2} />}
+          title="No songs here yet"
+          description={
+            activePlaylistId === "library"
+              ? "Switch to Local or Online mode and add your first track."
+              : "Add songs to this playlist from your library."
+          }
+        />
       </section>
     );
   }
@@ -48,22 +54,46 @@ export function SongList(props: SongListProps) {
 
       <ul className="song-list">
         {songs.map((song, index) => {
-          const active = currentSongId === song.id;
-          const removeLabel =
-            activePlaylistId === "library" ? "Remove from library" : "Remove from playlist";
+          const isActive = currentSongId === song.id;
+          const isSelected = selectedSongIds.has(song.id);
+          const isFav = isFavorite(song.id);
 
           return (
-            <li key={song.id} className={`song-row ${active ? "is-active" : ""}`}>
+            <li key={song.id} className={`song-row ${isActive ? "is-active" : ""} ${isSelected ? "is-selected" : ""}`}>
+              {/* Checkbox + index */}
               <label className="song-check">
                 <input
                   type="checkbox"
-                  checked={selectedSongIds.has(song.id)}
+                  checked={isSelected}
                   onChange={() => onToggleSelected(song.id)}
+                  aria-label={`Select ${song.title}`}
                 />
-                <span>{index + 1}</span>
+                <span className="song-index">{index + 1}</span>
               </label>
 
-              <button className="song-main" type="button" onClick={() => onPlaySong(song.id)}>
+              {/* Cover thumbnail */}
+              <div className="song-thumb" aria-hidden="true">
+                {song.coverUrl ? (
+                  <img src={song.coverUrl} alt="" />
+                ) : (
+                  <Music size={16} strokeWidth={1.4} />
+                )}
+                {isActive && (
+                  <div className="song-thumb-playing">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                )}
+              </div>
+
+              {/* Main info — click to play */}
+              <button
+                className="song-main"
+                type="button"
+                onClick={() => onPlaySong(song.id)}
+                aria-label={`Play ${song.title} by ${song.artist}`}
+              >
                 <span className="song-title">{song.title}</span>
                 <span className="song-artist">{song.artist}</span>
                 <span className="song-meta-badges">
@@ -74,28 +104,29 @@ export function SongList(props: SongListProps) {
                 </span>
               </button>
 
+              {/* Duration */}
               <span className="song-duration">{formatSecondsToClock(song.duration)}</span>
 
+              {/* Actions */}
               <div className="song-actions">
-                <button
-                  className={`btn-icon ${isFavorite(song.id) ? "is-favorite" : ""}`}
-                  type="button"
+                <IconButton
+                  label={isFav ? "Remove from favorites" : "Add to favorites"}
+                  isActive={isFav}
+                  size="sm"
                   onClick={() => onToggleFavorite(song.id)}
-                  aria-label="Toggle favorite"
-                  title="Favorites"
+                  className={isFav ? "fav-active" : ""}
                 >
-                  ★
-                </button>
+                  <Star size={14} fill={isFav ? "currentColor" : "none"} />
+                </IconButton>
 
-                <button
-                  className="btn-icon btn-danger"
-                  type="button"
+                <IconButton
+                  label={removeLabel}
+                  isDanger
+                  size="sm"
                   onClick={() => onRemoveSong(song.id)}
-                  aria-label={removeLabel}
-                  title={removeLabel}
                 >
-                  ×
-                </button>
+                  <Trash2 size={14} />
+                </IconButton>
               </div>
             </li>
           );
