@@ -1,4 +1,5 @@
-import { Moon, Sun, Wifi, HardDrive, Music, LogOut } from "lucide-react";
+import { Moon, Sun, Wifi, HardDrive, LogOut } from "lucide-react";
+import mjLogo from "../../assets/MJ.png";
 import { useAuth } from "../context/AuthContext";
 import { useApp } from "../context/AppContext";
 
@@ -20,7 +21,7 @@ export function AppHeader({ onLogoClick }: AppHeaderProps) {
         aria-label="MJ Music — click to refresh"
       >
         <div className="brand-logo-wrap">
-          <Music size={22} strokeWidth={1.8} />
+          <img src={mjLogo} alt="MJ Music" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} />
         </div>
         <div className="brand-copy">
           <h1>MJ Music</h1>

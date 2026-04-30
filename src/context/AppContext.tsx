@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -35,8 +36,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Apply theme to DOM on mount
-  useMemo(() => {
+  // Apply theme to DOM on mount and when it changes
+  useEffect(() => {
     document.body.setAttribute("data-theme", theme);
   }, [theme]);
 

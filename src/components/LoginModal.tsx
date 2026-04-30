@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Music, Lock, User, Eye, EyeOff, Mail, UserPlus, LogIn, Ghost } from "lucide-react";
+import { Lock, User, Eye, EyeOff, Mail, UserPlus, LogIn, Ghost } from "lucide-react";
+import mjLogo from "../../assets/MJ.png";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "./ui/Button";
 import { Spinner } from "./ui/Spinner";
@@ -68,7 +69,7 @@ export function LoginModal() {
         {/* Brand */}
         <div className="login-brand">
           <div className="login-brand-icon">
-            <Music size={28} strokeWidth={1.8} />
+            <img src={mjLogo} alt="MJ Music" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} />
           </div>
           <div>
             <h1 className="login-brand-name">MJ Music</h1>

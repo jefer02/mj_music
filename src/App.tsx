@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Ghost, LogIn } from "lucide-react";
 import { AddTrackPanel } from "./components/AddTrackPanel";
 import { AppHeader } from "./components/AppHeader";
+import { GuestBanner } from "./components/GuestBanner";
 import { LoadingScreen } from "./components/LoadingScreen";
 import { LoginModal } from "./components/LoginModal";
 import { PlayerPanel } from "./components/PlayerPanel";
@@ -10,25 +10,14 @@ import { SongList } from "./components/SongList";
 import { YouTubePlayerSurface } from "./components/YouTubePlayerSurface";
 import { ToastContainer } from "./components/ui/Toast";
 import { useAuth } from "./context/AuthContext";
-import { useMusicLibrary } from "./hooks/useMusicLibrary";
-import { usePlaybackEngine } from "./hooks/usePlaybackEngine";
+import { useMusicLibrary, type UseMusicLibraryResult } from "./hooks/useMusicLibrary";
+import { usePlaybackEngine, type UsePlaybackEngineResult } from "./hooks/usePlaybackEngine";
 import { useNotification } from "./context/NotificationContext";
 import { ApiError } from "./api/apiClient";
 import { LIBRARY_PLAYLIST_ID } from "./types/playlist";
+import type { Playlist } from "./types/playlist";
+import type { Song } from "./types/song";
 import { extractYouTubeVideoId } from "./utils/youtube";
-
-function GuestBanner() {
-  const { logout } = useAuth();
-  return (
-    <div className="guest-banner" role="status">
-      <Ghost size={15} />
-      <span>Guest mode — your data is not saved. <strong>Sign in</strong> to sync your library.</span>
-      <button type="button" className="guest-banner-btn" onClick={logout}>
-        <LogIn size={13} /> Sign in
-      </button>
-    </div>
-  );
-}
 
 // ── Authenticated shell ───────────────────────────────────────────────────────
 
@@ -83,7 +72,6 @@ function AuthenticatedApp() {
     activePlaylist={activePlaylist}
     activePlaylistId={activePlaylistId}
     visibleSongs={visibleSongs}
-    playerSettings={playerSettings}
     setActivePlaylistId={setActivePlaylistId}
     uploadLocalFile={uploadLocalFile}
     addYouTubeSong={addYouTubeSong}
@@ -93,7 +81,6 @@ function AuthenticatedApp() {
     deletePlaylist={deletePlaylist}
     toggleFavorite={toggleFavorite}
     isFavorite={isFavorite}
-    updatePlayerSettings={updatePlayerSettings}
     notify={notify}
     isGuest={isGuest}
     selectedSongIds={selectedSongIds}
@@ -105,13 +92,38 @@ function AuthenticatedApp() {
 
 // ── App Shell (only mounted when data is ready) ───────────────────────────────
 
+interface AppShellProps {
+  library: UseMusicLibraryResult;
+  playback: UsePlaybackEngineResult;
+  songs: Song[];
+  playlists: Playlist[];
+  activePlaylist: Playlist;
+  activePlaylistId: string;
+  visibleSongs: Song[];
+  setActivePlaylistId: (id: string) => void;
+  uploadLocalFile: (file: File) => Promise<void>;
+  addYouTubeSong: (data: { url: string; title: string; artist: string }) => Promise<void>;
+  removeSongFromPlaylist: (songId: string, playlistId: string) => Promise<void>;
+  createPlaylist: (name: string, songIds: string[]) => Promise<string | null>;
+  addSongsToPlaylist: (playlistId: string, songIds: string[]) => Promise<void>;
+  deletePlaylist: (playlistId: string) => Promise<void>;
+  toggleFavorite: (songId: string) => Promise<void>;
+  isFavorite: (songId: string) => boolean;
+  notify: (message: string, tone?: "success" | "info" | "warning" | "error") => void;
+  isGuest: boolean;
+  selectedSongIds: Set<string>;
+  setSelectedSongIds: React.Dispatch<React.SetStateAction<Set<string>>>;
+  newPlaylistName: string;
+  setNewPlaylistName: (value: string) => void;
+}
+
 function AppShell({
   library, playback, songs, playlists, activePlaylist, activePlaylistId, visibleSongs,
   setActivePlaylistId, uploadLocalFile, addYouTubeSong, removeSongFromPlaylist,
   createPlaylist, addSongsToPlaylist, deletePlaylist, toggleFavorite, isFavorite,
   notify, isGuest, selectedSongIds, setSelectedSongIds, newPlaylistName, setNewPlaylistName,
-}: any) {
-  const songsById = useMemo(() => new Map(songs.map((s: any) => [s.id, s])), [songs]);
+}: AppShellProps) {
+  const songsById = useMemo(() => new Map(songs.map((s) => [s.id, s])), [songs]);
 
   const handleUploadLocalFile = useCallback(async (file: File): Promise<void> => {
     try {
@@ -129,7 +141,7 @@ function AppShell({
       notify("Invalid YouTube URL", "error");
       return;
     }
-    const already = songs.some((s: any) => s.sourceType === "YOUTUBE" && s.youtubeVideoId === videoId);
+    const already = songs.some((s) => s.sourceType === "YOUTUBE" && s.youtubeVideoId === videoId);
     if (already) {
       notify("This YouTube song is already in your library", "warning");
       return;
@@ -144,7 +156,7 @@ function AppShell({
   }, [addYouTubeSong, notify, songs]);
 
   const handleToggleSelected = useCallback((songId: string): void => {
-    setSelectedSongIds((prev: Set<string>) => {
+    setSelectedSongIds((prev) => {
       const next = new Set(prev);
       next.has(songId) ? next.delete(songId) : next.add(songId);
       return next;
@@ -152,7 +164,7 @@ function AppShell({
   }, [setSelectedSongIds]);
 
   const handleSelectAllVisible = useCallback((): void => {
-    setSelectedSongIds(new Set(visibleSongs.map((s: any) => s.id)));
+    setSelectedSongIds(new Set(visibleSongs.map((s) => s.id)));
   }, [visibleSongs, setSelectedSongIds]);
 
   const handleClearSelection = useCallback((): void => {
@@ -198,7 +210,7 @@ function AppShell({
     try {
       await removeSongFromPlaylist(songId, activePlaylistId);
       if (wasPlaying) playback.clearCurrentSong();
-      setSelectedSongIds((prev: Set<string>) => {
+      setSelectedSongIds((prev) => {
         const next = new Set(prev);
         next.delete(songId);
         return next;

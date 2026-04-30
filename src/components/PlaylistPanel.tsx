@@ -67,7 +67,7 @@ export function PlaylistPanel(props: PlaylistPanelProps) {
         {playlists.map((playlist) => {
           const isActive = playlist.id === activePlaylistId;
           const isLibrary = playlist.id === LIBRARY_PLAYLIST_ID;
-          const emoji = isLibrary ? "📚" : playlist.name === "Favorites" ? "★" : "♫";
+          const emoji = isLibrary ? "" : playlist.name === "Favorites" ? "★" : "♫";
 
           return (
             <li key={playlist.id} className={`playlist-row ${isActive ? "is-active" : ""}`}>
